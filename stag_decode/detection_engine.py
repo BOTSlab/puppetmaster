@@ -95,25 +95,25 @@ class DetectionEngine:
 
         # stage-1
         self.image = image
-        print('>>>>>>>Stage-1<<<<<<<')
+        #print('>>>>>>>Stage-1<<<<<<<')
         rois_info = stag_detector.detect_rois(image, detect_scales[0] )
         self.bbox_corner_info = stag_detector.image_res
 
         # stage-1 print
-        print('%d ROIs'%len(rois_info))
+        #print('%d ROIs'%len(rois_info))
 
  
         # stage-2
-        print('>>>>>>>Stage-2<<<<<<<')
+        #print('>>>>>>>Stage-2<<<<<<<')
         rois = [roi_info['ordered_corners'] for roi_info in rois_info]
         self.rois_info = rois_info        
         decoded_tags = stag_decoder.detect_tags(image, rois.copy())
 
         # stage-2 print
-        print('Valid ROIs:', end=' ')
+        #print('Valid ROIs:', end=' ')
         for ii, decoded_tag in enumerate(decoded_tags):
             if decoded_tag['is_valid']: print('%d'% ii, end=', ')
-        print('')
+        #print('')
 
         # estimate pose
         for ii, decoded_tag in enumerate(decoded_tags):
@@ -201,13 +201,14 @@ class DetectionEngine:
 
         return pose_result
 
-    def visualize(self, is_pause = True):
+    def visualize(self, is_pause = True, draw_rois = False, draw_bbox = False, draw_kps = False):
 
         image = self.image
         time_to_wait = 0 if is_pause else 1
-         # draw rois
-        image_out_rois = vis_tag_rois(image, self.rois_info)
-        image_out_bbox_corner = vis_center_and_corners(image, self.bbox_corner_info)
+        if draw_rois:
+            image_out_rois = vis_tag_rois(image, self.rois_info)
+        if draw_bbox:
+            image_out_bbox_corner = vis_center_and_corners(image, self.bbox_corner_info)
 
         # draw keypoints and pose
         image_out_pose = image.copy()
@@ -220,23 +221,24 @@ class DetectionEngine:
 
             tag_id_decimal = decoded_tag['tag_id']
             rotate_idx = 0
-
-
-
             
             visualize_rt(image_out_pose, decoded_tag['rvecs'], decoded_tag['tvecs'], self.cameraMatrix, self.distCoeffs, decoded_tag['tag_real_size_in_meter'], tag_id_decimal = tag_id_decimal, tid_text_pos=None, score=None, is_draw_cube =False, rotate_idx=rotate_idx, text_color= None)
 
             image_rect = visual_keypoints(image, decoded_tag, tag_id_decimal)
             image_rect_list.append(image_rect)
 
-        image_out_kpts = cv2.hconcat(image_rect_list)
-        if image_out_kpts is None:
-            image_out_kpts = np.zeros([300, 300, 3],dtype=np.uint8)
+        if draw_kps:
+            image_out_kpts = cv2.hconcat(image_rect_list)
+            if image_out_kpts is None:
+                image_out_kpts = np.zeros([300, 300, 3],dtype=np.uint8)
 
         cv2.imshow('image with pose', image_out_pose)
-        cv2.imshow('Boxes and corners (Stage-1)', image_out_bbox_corner)
-        cv2.imshow('ROIs (Stage-1)', image_out_rois)
-        cv2.imshow('Keypoints (Stage-2)', image_out_kpts)
+        if draw_bbox:
+            cv2.imshow('Boxes and corners (Stage-1)', image_out_bbox_corner)
+        if draw_rois:
+            cv2.imshow('ROIs (Stage-1)', image_out_rois)
+        if draw_kps:
+            cv2.imshow('Keypoints (Stage-2)', image_out_kpts)
         c = cv2.waitKey(time_to_wait)
 
         return c
