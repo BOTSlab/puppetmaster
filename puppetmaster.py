@@ -11,7 +11,7 @@ from scipy.ndimage import gaussian_filter
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='./config_video.json', help='path of configuration file for camera params and marker size')
+    parser.add_argument('--config', type=str, default='./config.json', help='path of configuration file for camera params and marker size')
     parser.add_argument('--CPU', action='store_true', help='use CPU only')
     args = parser.parse_args()
 
@@ -33,6 +33,7 @@ if __name__ == "__main__":
         hamming_dist = config_dict['hamming_dist']
         output_width = config_dict['output_width']
         output_height = config_dict['output_height']
+        guide_dot_in_robot_frame = config_dict['guide_dot_in_robot_frame']
         load_config_flag = True
     except:
         print('Cannot load config: %s'% config_filename)  
