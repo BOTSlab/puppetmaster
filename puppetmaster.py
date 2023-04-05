@@ -67,13 +67,10 @@ if __name__ == "__main__":
                     cameraMatrix = cameraMatrix, distCoeffs=  distCoeffs, codebook = codebook,
                     tag_real_size_in_meter_dict = {-1:tag_real_size_in_meter})
 
-        # Create output image
-        output_image = np.zeros((output_height, output_width), np.uint8)
-
+        output_image = None
         cap = None 
 
         while True:
-            output_image.fill(0)
 
             # read video frame or image
             if is_video:
@@ -87,6 +84,12 @@ if __name__ == "__main__":
                 if image is None:
                     print('Cannot read image.')
                     break
+
+            if output_image is None:
+                output_image = np.zeros((output_height, output_width), np.uint8)
+            else:
+                output_image.fill(0)
+                #output_image = image[:,:,0] // 10
 
             # detect markers, print timing, visualize poses
             decoded_tags = stag_image_processor.process(image, detect_scale=None)
@@ -103,7 +106,7 @@ if __name__ == "__main__":
             # Filter then normalize output image.
             # BAD: Close robots may have guide points that influence the other
             # robot when blurred.  Combine individual kernels through max filter???
-            gaussian_filter(output_image, output=output_image, sigma=50)
+            gaussian_filter(output_image, output=output_image, sigma=5)
             output_image = output_image / np.amax(output_image)
 
             cv2.imshow('Output Image', output_image)
