@@ -2,11 +2,84 @@ import cv2
 from deeptag_model_setting import load_deeptag_models
 from marker_dict_setting import load_marker_codebook
 from stag_decode.detection_engine import DetectionEngine 
+from util.homo_transform import warpPerspectivePts
 import json
 import os
+import pprint
 import numpy as np
 from scipy.ndimage import gaussian_filter
+from skimage.draw.draw import disk, line, polygon
+from math import acos, cos, hypot, pi, sin
+import matplotlib.pyplot as plt
 
+guide_thumbnail_size = 41
+
+def create_thumbnail():
+    size = guide_thumbnail_size
+
+    assert size % 2 != 0, 'guide_thumbnail_size should be odd'
+    guide_thumbnail = np.zeros((size, size), np.uint8)
+
+    # An arrow pointing to the right as a test for orientation
+    rr, cc = line(size//2, 0, size//2, size//2)
+    guide_thumbnail[rr, cc] = 255
+    poly = np.array(( (size//4, size//2),
+        (3*(size//4), size/2),
+        (size//2, size-1)
+    ))
+    rr, cc = polygon(poly[:, 0], poly[:, 1])
+    guide_thumbnail[rr, cc] = 255
+
+    # Fill a disk in the centre.
+    #rr, cc = disk((size//2, size//2), 10)
+    #guide_thumbnail[rr, cc] = 255
+
+    #gaussian_filter(guide_thumbnail, output=guide_thumbnail, sigma=5)
+
+    max_value = np.amax(guide_thumbnail)
+    guide_thumbnail = ((255 / max_value) * guide_thumbnail).astype(np.uint8)
+    #print(guide_thumbnail)
+    #plt.imshow(guide_thumbnail)
+    #plt.show()
+
+    return guide_thumbnail
+
+def paste_thumbnail(centre, output_image, intensity=1.0):
+    """Pastes the thumbnail image into output_image.  The tricky part is to
+    handle the case where the pasted area overlaps the image boundary."""
+
+    # Convert the centre to integer image indices.
+    centre = list(map(int, centre))
+
+    size = guide_thumbnail_size
+    output_height = output_image.shape[0]
+    output_width = output_image.shape[1]
+    print(f"centre: {centre}")
+
+    ox_start = centre[0] - size // 2
+    oy_start = centre[1] - size // 2
+    ox_end = ox_start + size
+    oy_end = oy_start + size
+
+    gx_start = 0
+    gy_start = 0
+    gx_end = size
+    gy_end = size
+
+    if ox_start < 0:
+        gx_start = -ox_start
+        ox_start = 0
+    if oy_start < 0:
+        gy_start = -oy_start
+        oy_start = 0
+    if ox_end >= output_width:
+        gx_end -= ox_end - output_width
+        ox_end = output_width - 1
+    if oy_end >= output_height:
+        gy_end -= oy_end - output_height
+        oy_end = output_height - 1
+
+    output_image[oy_start:oy_end, ox_start:ox_end] = intensity * guide_thumbnail[gy_start:gy_end, gx_start:gx_end]
 
 if __name__ == "__main__":
     import argparse
@@ -15,6 +88,7 @@ if __name__ == "__main__":
     parser.add_argument('--CPU', action='store_true', help='use CPU only')
     args = parser.parse_args()
 
+    guide_thumbnail = create_thumbnail()
 
     config_filename = args.config
     device = 'cpu' if args.CPU else None
@@ -33,7 +107,7 @@ if __name__ == "__main__":
         hamming_dist = config_dict['hamming_dist']
         output_width = config_dict['output_width']
         output_height = config_dict['output_height']
-        guide_dot_in_robot_frame = config_dict['guide_dot_in_robot_frame']
+        guide_displacement = config_dict['guide_displacement']
         load_config_flag = True
     except:
         print('Cannot load config: %s'% config_filename)  
@@ -70,6 +144,8 @@ if __name__ == "__main__":
         output_image = None
         cap = None 
 
+        pp = pprint.PrettyPrinter(indent=4)
+
         while True:
 
             # read video frame or image
@@ -88,8 +164,8 @@ if __name__ == "__main__":
             if output_image is None:
                 output_image = np.zeros((output_height, output_width), np.uint8)
             else:
-                output_image.fill(0)
-                #output_image = image[:,:,0] // 10
+                # output_image.fill(0)
+                output_image = image[:,:,0] // 10
 
             # detect markers, print timing, visualize poses
             decoded_tags = stag_image_processor.process(image, detect_scale=None)
@@ -99,19 +175,40 @@ if __name__ == "__main__":
             for tag in decoded_tags:
                 if not tag['is_valid']:
                     continue
-                index_of_middle_kp = len(tag['keypoints_in_images']) // 2
-                middle_kp = tag['keypoints_in_images'][index_of_middle_kp]
-                output_image[int(middle_kp[1]), int(middle_kp[0])] = 255
 
-            # Filter then normalize output image.
-            # BAD: Close robots may have guide points that influence the other
-            # robot when blurred.  Combine individual kernels through max filter???
-            gaussian_filter(output_image, output=output_image, sigma=5)
-            output_image = output_image / np.amax(output_image)
+                pp.pprint(tag)
 
-            cv2.imshow('Output Image', output_image)
+                H = tag['H_crop']
+                H_inv = np.linalg.inv(H)
+                tag_centre = warpPerspectivePts(H_inv, [[127, 127]])[0]
+                tag_right = warpPerspectivePts(H_inv, [[255, 127]])[0]
+
+                paste_thumbnail(tag_centre, output_image)
+                paste_thumbnail(tag_right, output_image, intensity=0.5)
+
+                # To get the orientation of the tag, we use the positions of the tag's centre and a point directly to the right of the tag centre, as defined on the tag's "native" 256x256 grid.  Then we form two vectors, A and B and get the angle between them.  All of these quantities are defined in the image plane so there is an inherent assumption here that we have captured an overhead view.
+
+                Ax = 1
+                Ay = 0
+                Bx = tag_right[0] - tag_centre[0]
+                By = tag_right[1] - tag_centre[1]
+                cos_theta = (Ax*Bx + Ay*By) / hypot(Bx, By)
+                tag_theta = acos(cos_theta)
+                #tag_theta = -pi/2
+
+                # Determine the centre position for the thumbnail to be pasted.
+                c = cos(tag_theta)
+                s = sin(tag_theta)
+                dx = c * guide_displacement[0] - s * guide_displacement[1]
+                dy = s * guide_displacement[0] + s * guide_displacement[1]
+                tag_centre[0] += dx
+                tag_centre[1] += dy
+
+                #paste_thumbnail(tag_centre, output_image)
 
             c = stag_image_processor.visualize(is_pause= not is_video)
+            #cv2.imshow('Output Image', output_image)
+            #c = cv2.waitKey(1)
 
             # press ESC or q to exit
             if c == 27 or c == ord('q') or not is_video:
@@ -119,5 +216,3 @@ if __name__ == "__main__":
         
 
         if cap is not None: cap.release()
-
-               

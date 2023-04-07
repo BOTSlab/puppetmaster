@@ -1,6 +1,6 @@
 {
     "is_video":1,
-    "filepath":4,
+    "filepath":0,
     "family": "apriltag",
     "hamming_dist": 4,
     "codebook": "",
@@ -9,5 +9,5 @@
     "marker_size": 0.03,
     "output_width": 1280,
     "output_height": 720,
-    "guide_dot_in_robot_frame": [200, 0]
+    "guide_displacement": [75, 0]
 }

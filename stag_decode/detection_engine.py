@@ -111,8 +111,8 @@ class DetectionEngine:
 
         # stage-2 print
         #print('Valid ROIs:', end=' ')
-        for ii, decoded_tag in enumerate(decoded_tags):
-            if decoded_tag['is_valid']: print('%d'% ii, end=', ')
+        #for ii, decoded_tag in enumerate(decoded_tags):
+        #    if decoded_tag['is_valid']: print('%d'% ii, end=', ')
         #print('')
 
         # estimate pose
