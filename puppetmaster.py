@@ -7,12 +7,15 @@ import json
 import os
 import pprint
 import numpy as np
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, rotate
 from skimage.draw.draw import disk, line, polygon
-from math import acos, cos, hypot, pi, sin
+from math import atan2, cos, hypot, pi, sin
 import matplotlib.pyplot as plt
 
 guide_thumbnail_size = 41
+
+cameraMatrix = None
+distCoeffs = None
 
 def create_thumbnail():
     size = guide_thumbnail_size
@@ -30,7 +33,6 @@ def create_thumbnail():
     rr, cc = polygon(poly[:, 0], poly[:, 1])
     guide_thumbnail[rr, cc] = 255
 
-    # Fill a disk in the centre.
     #rr, cc = disk((size//2, size//2), 10)
     #guide_thumbnail[rr, cc] = 255
 
@@ -44,7 +46,7 @@ def create_thumbnail():
 
     return guide_thumbnail
 
-def paste_thumbnail(centre, output_image, intensity=1.0):
+def paste_thumbnail(centre, rotation, output_image, intensity=1.0):
     """Pastes the thumbnail image into output_image.  The tricky part is to
     handle the case where the pasted area overlaps the image boundary."""
 
@@ -54,7 +56,7 @@ def paste_thumbnail(centre, output_image, intensity=1.0):
     size = guide_thumbnail_size
     output_height = output_image.shape[0]
     output_width = output_image.shape[1]
-    print(f"centre: {centre}")
+    #print(f"centre: {centre}")
 
     ox_start = centre[0] - size // 2
     oy_start = centre[1] - size // 2
@@ -79,7 +81,27 @@ def paste_thumbnail(centre, output_image, intensity=1.0):
         gy_end -= oy_end - output_height
         oy_end = output_height - 1
 
-    output_image[oy_start:oy_end, ox_start:ox_end] = intensity * guide_thumbnail[gy_start:gy_end, gx_start:gx_end]
+    rotated_thumbnail = rotate(guide_thumbnail, -rotation*180/pi, reshape=False)
+
+    output_image[oy_start:oy_end, ox_start:ox_end] = intensity * rotated_thumbnail[gy_start:gy_end, gx_start:gx_end]
+
+def get_tag_theta(tag, img):
+    rvecs = tag['rvecs']
+    tvecs = tag['tvecs']
+
+    x_vector = np.float32([[0.1,0,0]])
+    origin = np.float32([[0,0,0]])
+
+    x_vector_imgpts, jac = cv2.projectPoints(x_vector, rvecs, tvecs, cameraMatrix, distCoeffs)
+    origin_imgpts, jac = cv2.projectPoints(origin, rvecs, tvecs, cameraMatrix, distCoeffs)
+
+    #img = cv2.line(img, tuple(origin_imgpts[0].ravel().astype(np.int16).tolist()), \
+    #              tuple(x_vector_imgpts[0].ravel().astype(np.int16).tolist()), (255, 255, 255), 5)
+
+    # To get the orientation of the tag, we use the positions of the tag's centre and the tag's x-axis vector.  
+    x = x_vector_imgpts[0][0][0] - origin_imgpts[0][0][0]
+    y = x_vector_imgpts[0][0][1] - origin_imgpts[0][0][1]
+    return atan2(y, x)
 
 if __name__ == "__main__":
     import argparse
@@ -141,6 +163,8 @@ if __name__ == "__main__":
                     cameraMatrix = cameraMatrix, distCoeffs=  distCoeffs, codebook = codebook,
                     tag_real_size_in_meter_dict = {-1:tag_real_size_in_meter})
 
+        cameraMatrix = np.float32(cameraMatrix).reshape(3,3)
+        distCoeffs = np.float32(distCoeffs)
         output_image = None
         cap = None 
 
@@ -175,26 +199,13 @@ if __name__ == "__main__":
             for tag in decoded_tags:
                 if not tag['is_valid']:
                     continue
-
-                pp.pprint(tag)
+                #pp.pprint(tag)
 
                 H = tag['H_crop']
                 H_inv = np.linalg.inv(H)
                 tag_centre = warpPerspectivePts(H_inv, [[127, 127]])[0]
-                tag_right = warpPerspectivePts(H_inv, [[255, 127]])[0]
 
-                paste_thumbnail(tag_centre, output_image)
-                paste_thumbnail(tag_right, output_image, intensity=0.5)
-
-                # To get the orientation of the tag, we use the positions of the tag's centre and a point directly to the right of the tag centre, as defined on the tag's "native" 256x256 grid.  Then we form two vectors, A and B and get the angle between them.  All of these quantities are defined in the image plane so there is an inherent assumption here that we have captured an overhead view.
-
-                Ax = 1
-                Ay = 0
-                Bx = tag_right[0] - tag_centre[0]
-                By = tag_right[1] - tag_centre[1]
-                cos_theta = (Ax*Bx + Ay*By) / hypot(Bx, By)
-                tag_theta = acos(cos_theta)
-                #tag_theta = -pi/2
+                tag_theta = get_tag_theta(tag, output_image)
 
                 # Determine the centre position for the thumbnail to be pasted.
                 c = cos(tag_theta)
@@ -204,11 +215,11 @@ if __name__ == "__main__":
                 tag_centre[0] += dx
                 tag_centre[1] += dy
 
-                #paste_thumbnail(tag_centre, output_image)
+                paste_thumbnail(tag_centre, tag_theta, output_image)
 
-            c = stag_image_processor.visualize(is_pause= not is_video)
-            #cv2.imshow('Output Image', output_image)
-            #c = cv2.waitKey(1)
+            #c = stag_image_processor.visualize(is_pause= not is_video)
+            cv2.imshow('Output Image', output_image)
+            c = cv2.waitKey(1)
 
             # press ESC or q to exit
             if c == 27 or c == ord('q') or not is_video:
