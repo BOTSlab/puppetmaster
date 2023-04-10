@@ -9,9 +9,9 @@
     "marker_size": 0.03,
     "output_width": 1280,
     "output_height": 720,
-    "upper_left": [100, 100],
-    "upper_right": [500, 100],
-    "lower_right": [600, 600],
-    "lower_left": [100, 600],
+    "upper_left": [369, 29],
+    "upper_right": [1586, 300],
+    "lower_right": [1755, 941],
+    "lower_left": [145, 802],
     "guide_displacement": [50, 0]
 }

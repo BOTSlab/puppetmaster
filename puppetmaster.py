@@ -16,11 +16,13 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 
 guide_thumbnail_size = 41
+raw_window_name = "Raw Input"
 input_window_name = "Input Image Side"
 output_window_name = "Output Image Side"
 
 cameraMatrix = None
 distCoeffs = None
+input_image = None
 screen_corners = []
 
 def create_thumbnail():
@@ -143,9 +145,6 @@ def draw_polygon(polygon, image, color):
         p1 = p2
 
 def visualize_input_side(image, decoded_tags):
-    draw_polygon(screen_corners_polygon, image, (255, 255, 0))
-    draw_polygon(screen_corners_polygon_dilated, image, (0, 255, 255))
-
     for decoded_tag in decoded_tags:
         if not decoded_tag['is_valid']: continue
 
@@ -220,11 +219,18 @@ if __name__ == "__main__":
         screen_corners_polygon = Polygon(screen_corners)
         screen_corners_polygon_dilated = screen_corners_polygon.buffer(100, single_sided=True)
 
+        output_corners = [[0, 0], [output_width-1, 0], [output_width-1, output_height-1], [0, output_height-1]]
+        homography, status = cv2.findHomography(np.array(screen_corners), np.array(output_corners))
+
+        cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
         cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
-        cv2.namedWindow(output_window_name, cv2.WINDOW_NORMAL)
+        #cv2.namedWindow(output_window_name, cv2.WINDOW_NORMAL)
+        cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
+        cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
+        #cv2.setWindowProperty(output_window_name, cv2.WND_PROP_TOPMOST, 1)
+
         output_image = None
         cap = None 
-
         pp = pprint.PrettyPrinter(indent=4)
 
         while True:
@@ -232,24 +238,29 @@ if __name__ == "__main__":
             # read video frame or image
             if is_video:
                 if cap is None: cap = cv2.VideoCapture(filename)
-                ret, image =cap.read()
+                ret, raw_image = cap.read()
                 if not ret:
                     print('Cannot read video.')
                     break
             else:
-                image = cv2.imread(filename)
-                if image is None:
+                raw_image = cv2.imread(filename)
+                if raw_image is None:
                     print('Cannot read image.')
                     break
+
+            # Warp the raw image.
+            #if input_image is None:
+            #    input_image = np.zeros((output_height, output_width), np.uint8)
+            input_image = cv2.warpPerspective(raw_image, homography, (output_width, output_height))
 
             if output_image is None:
                 output_image = np.zeros((output_height, output_width), np.uint8)
             else:
                 # output_image.fill(0)
-                output_image = image[:,:,0] // 10
+                output_image = input_image[:,:,0] // 10
 
             # detect markers, print timing, visualize poses
-            decoded_tags = stag_image_processor.process(image, detect_scale=None)
+            decoded_tags = stag_image_processor.process(input_image, detect_scale=None)
             #stag_image_processor.print_timming()
 
             # Write detected tag positions into the output image.
@@ -261,13 +272,17 @@ if __name__ == "__main__":
                 process_tag(tag)
 
             #c = stag_image_processor.visualize(is_pause= not is_video)
-            visualize_input_side(image, decoded_tags)
+            draw_polygon(screen_corners_polygon, raw_image, (255, 255, 0))
+            draw_polygon(screen_corners_polygon_dilated, raw_image, (0, 255, 255))
+            visualize_input_side(input_image, decoded_tags)
 
             resize_divisor = 4
-            cv2.resizeWindow(input_window_name, image.shape[1]//resize_divisor, image.shape[0]//resize_divisor)
-            cv2.resizeWindow(input_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
-            cv2.imshow(input_window_name, image)
-            cv2.imshow(output_window_name, output_image)
+            cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
+            cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
+            #cv2.resizeWindow(input_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
+            cv2.imshow(raw_window_name, raw_image)
+            cv2.imshow(input_window_name, input_image)
+            #cv2.imshow(output_window_name, output_image)
             c = cv2.waitKey(1)
 
             # press ESC or q to exit
