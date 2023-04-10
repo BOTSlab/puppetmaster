@@ -25,8 +25,10 @@ def detect_keypoints_with_hms(confidences_pred_np, grid_pred_np, sigma3_nms = 5,
     kpts_cand = grid_pred_np[mask, :]
     scores_cand_all = confidences_pred_np[mask, 1:]
 
-    trust_ratio = np.sum(np.sum(scores_cand_all, axis = 1) > 0.5)/scores_cand_all.shape[0]
-    trust_flag = trust_ratio >min_trust_ratio
+    trust_flag = False
+    if scores_cand_all.shape[0] != 0:
+        trust_ratio = np.sum(np.sum(scores_cand_all, axis = 1) > 0.5)/scores_cand_all.shape[0]
+        trust_flag = trust_ratio >min_trust_ratio
 
     # trust_flag = True
     if trust_flag:
