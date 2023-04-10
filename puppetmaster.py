@@ -2,6 +2,7 @@ import cv2
 from deeptag_model_setting import load_deeptag_models
 from marker_dict_setting import load_marker_codebook
 from stag_decode.detection_engine import DetectionEngine 
+from stag_decode.visualization import visualize_rt
 from util.homo_transform import warpPerspectivePts
 import json
 import os
@@ -9,13 +10,18 @@ import pprint
 import numpy as np
 from scipy.ndimage import gaussian_filter, rotate
 from skimage.draw.draw import disk, line, polygon
-from math import atan2, cos, hypot, pi, sin
+from math import atan2, cos, pi, sin
 import matplotlib.pyplot as plt
+from shapely.geometry import Point
+from shapely.geometry.polygon import Polygon
 
 guide_thumbnail_size = 41
+input_window_name = "Input Image Side"
+output_window_name = "Output Image Side"
 
 cameraMatrix = None
 distCoeffs = None
+screen_corners = []
 
 def create_thumbnail():
     size = guide_thumbnail_size
@@ -101,7 +107,50 @@ def get_tag_theta(tag, img):
     # To get the orientation of the tag, we use the positions of the tag's centre and the tag's x-axis vector.  
     x = x_vector_imgpts[0][0][0] - origin_imgpts[0][0][0]
     y = x_vector_imgpts[0][0][1] - origin_imgpts[0][0][1]
+    #img = cv2.line(img, tuple(origin_imgpts[0].ravel().astype(np.int16).tolist()), \
+    #              tuple(x_vector_imgpts[0].ravel().astype(np.int16).tolist()), (255, 255, 255), 5)
     return atan2(y, x)
+
+def process_tag(tag):
+    H = tag['H_crop']
+    H_inv = np.linalg.inv(H)
+    tag_centre = warpPerspectivePts(H_inv, [[127, 127]])[0]
+
+    # Discard tags outside the dilated polygon.
+    if not screen_corners_polygon_dilated.contains(Point(tag_centre)):
+        return
+
+    tag_theta = get_tag_theta(tag, output_image)
+
+    # Determine the centre position for the thumbnail to be pasted.
+    c = cos(tag_theta)
+    s = sin(tag_theta)
+    dx = c * guide_displacement[0] - s * guide_displacement[1]
+    dy = s * guide_displacement[0] + s * guide_displacement[1]
+    tag_centre[0] += dx
+    tag_centre[1] += dy
+
+    paste_thumbnail(tag_centre, tag_theta, output_image)
+
+def draw_polygon(polygon, image, color):
+    ring = polygon.exterior
+    p1 = ring.coords[0]
+    p1 = list(map(int, p1))
+    for i in range(1, len(ring.coords)):
+        p2 = ring.coords[i]
+        p2 = list(map(int, p2))
+        cv2.line(image, list(p1), p2, color, 5)
+        p1 = p2
+
+def visualize_input_side(image, decoded_tags):
+    draw_polygon(screen_corners_polygon, image, (255, 255, 0))
+    draw_polygon(screen_corners_polygon_dilated, image, (0, 255, 255))
+
+    for decoded_tag in decoded_tags:
+        if not decoded_tag['is_valid']: continue
+
+        visualize_rt(image, decoded_tag['rvecs'], decoded_tag['tvecs'], cameraMatrix, distCoeffs, decoded_tag['tag_real_size_in_meter'], tag_id_decimal=decoded_tag['tag_id'], tid_text_pos=None, score=None, is_draw_cube =False, rotate_idx=0, text_color= None)
+
 
 if __name__ == "__main__":
     import argparse
@@ -129,11 +178,14 @@ if __name__ == "__main__":
         hamming_dist = config_dict['hamming_dist']
         output_width = config_dict['output_width']
         output_height = config_dict['output_height']
+        screen_corners.append( config_dict['upper_left'] )
+        screen_corners.append( config_dict['upper_right'] )
+        screen_corners.append( config_dict['lower_right'] )
+        screen_corners.append( config_dict['lower_left'] )
         guide_displacement = config_dict['guide_displacement']
         load_config_flag = True
     except:
         print('Cannot load config: %s'% config_filename)  
-
 
     # load models
     load_model_flag = False
@@ -165,6 +217,11 @@ if __name__ == "__main__":
 
         cameraMatrix = np.float32(cameraMatrix).reshape(3,3)
         distCoeffs = np.float32(distCoeffs)
+        screen_corners_polygon = Polygon(screen_corners)
+        screen_corners_polygon_dilated = screen_corners_polygon.buffer(100, single_sided=True)
+
+        cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
+        cv2.namedWindow(output_window_name, cv2.WINDOW_NORMAL)
         output_image = None
         cap = None 
 
@@ -201,29 +258,20 @@ if __name__ == "__main__":
                     continue
                 #pp.pprint(tag)
 
-                H = tag['H_crop']
-                H_inv = np.linalg.inv(H)
-                tag_centre = warpPerspectivePts(H_inv, [[127, 127]])[0]
-
-                tag_theta = get_tag_theta(tag, output_image)
-
-                # Determine the centre position for the thumbnail to be pasted.
-                c = cos(tag_theta)
-                s = sin(tag_theta)
-                dx = c * guide_displacement[0] - s * guide_displacement[1]
-                dy = s * guide_displacement[0] + s * guide_displacement[1]
-                tag_centre[0] += dx
-                tag_centre[1] += dy
-
-                paste_thumbnail(tag_centre, tag_theta, output_image)
+                process_tag(tag)
 
             #c = stag_image_processor.visualize(is_pause= not is_video)
-            cv2.imshow('Output Image', output_image)
+            visualize_input_side(image, decoded_tags)
+
+            resize_divisor = 4
+            cv2.resizeWindow(input_window_name, image.shape[1]//resize_divisor, image.shape[0]//resize_divisor)
+            cv2.resizeWindow(input_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
+            cv2.imshow(input_window_name, image)
+            cv2.imshow(output_window_name, output_image)
             c = cv2.waitKey(1)
 
             # press ESC or q to exit
             if c == 27 or c == ord('q') or not is_video:
                 break
-        
 
         if cap is not None: cap.release()
