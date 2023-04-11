@@ -14,6 +14,8 @@ from math import atan2, cos, pi, sin
 import matplotlib.pyplot as plt
 from shapely.geometry.polygon import Polygon
 
+from controller_set import ControllerSet
+
 guide_thumbnail_size = 41
 #raw_window_name = "Raw Input"
 input_window_name = "Input Image Side"
@@ -23,6 +25,7 @@ cameraMatrix = None
 distCoeffs = None
 input_image = None
 screen_corners = []
+controller_set = ControllerSet()
 
 def create_thumbnail():
     size = guide_thumbnail_size
@@ -112,22 +115,28 @@ def get_tag_theta(tag, img):
     #              tuple(x_vector_imgpts[0].ravel().astype(np.int16).tolist()), (255, 255, 255), 5)
     return atan2(y, x)
 
-def process_tag(tag):
+def process_tag(tag, movement):
+    forward_movement, angular_movement = movement
+
     H = tag['H_crop']
     H_inv = np.linalg.inv(H)
     tag_centre = warpPerspectivePts(H_inv, [[127, 127]])[0]
 
-    tag_theta = get_tag_theta(tag, output_image)
+    theta = get_tag_theta(tag, output_image) + angular_movement
 
-    # Determine the centre position for the thumbnail to be pasted.
-    c = cos(tag_theta)
-    s = sin(tag_theta)
-    dx = c * guide_displacement[0] - s * guide_displacement[1]
-    dy = s * guide_displacement[0] + s * guide_displacement[1]
-    tag_centre[0] += dx
-    tag_centre[1] += dy
+    # Movement vector relative to robot frame.
+    Rx = guide_displacement[0] + forward_movement
+    Ry = guide_displacement[1]
 
-    paste_thumbnail(tag_centre, tag_theta, output_image)
+    # Rotate this vector into the world frame.
+    c = cos(theta)
+    s = sin(theta)
+    Wx = c * Rx - s * Ry
+    Wy = s * Rx + s * Ry
+    tag_centre[0] += Wx
+    tag_centre[1] += Wy
+
+    paste_thumbnail(tag_centre, theta, output_image)
 
 def draw_polygon(polygon, image, color):
     ring = polygon.exterior
@@ -217,10 +226,10 @@ if __name__ == "__main__":
         homography, status = cv2.findHomography(np.array(screen_corners), np.array(output_corners))
 
         #cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
-        cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
+        #cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
         cv2.namedWindow(output_window_name, cv2.WINDOW_NORMAL)
         #cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
-        cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
+        #cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
         cv2.setWindowProperty(output_window_name, cv2.WND_PROP_TOPMOST, 1)
 
         output_image = None
@@ -257,13 +266,19 @@ if __name__ == "__main__":
             decoded_tags = stag_image_processor.process(input_image, detect_scale=None)
             #stag_image_processor.print_timming()
 
+            # Compute a dictionary of the desired movements for all tags.  Tags
+            # not corresponding to active robots will not have an entry.
+            movement_dict = controller_set.get_movements(decoded_tags)
+
             # Write detected tag positions into the output image.
             for tag in decoded_tags:
-                if not tag['is_valid']:
+                if not 'tag_id' in tag or not tag['tag_id'] in movement_dict:
+                    # The first case is for invalid tags that don't have an id.
+                    # The second covers valid tags that are not active robots,
+                    # as determined by controller_set.
                     continue
-                #pp.pprint(tag)
 
-                process_tag(tag)
+                process_tag(tag, movement_dict[tag['tag_id']])
 
             #c = stag_image_processor.visualize(is_pause= not is_video)
             draw_polygon(screen_corners_polygon, raw_image, (255, 255, 0))
@@ -271,12 +286,12 @@ if __name__ == "__main__":
 
             resize_divisor = 1
             #cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
-            cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
+            #cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
             cv2.resizeWindow(output_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
             #cv2.imshow(raw_window_name, raw_image)
-            cv2.imshow(input_window_name, input_image)
+            #cv2.imshow(input_window_name, input_image)
             cv2.imshow(output_window_name, output_image)
-            c = cv2.waitKey(1)
+            c = cv2.waitKey(10)
 
             # press ESC or q to exit
             if c == 27 or c == ord('q') or not is_video:
