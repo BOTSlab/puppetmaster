@@ -1,17 +1,17 @@
 {
     "is_video":1,
-    "filepath":0,
+    "filepath":4,
     "family": "apriltag",
     "hamming_dist": 4,
     "codebook": "",
     "cameraMatrix": [921.315, 0, 649.204, 0, 921.375, 459.739, 0, 0, 1],
     "distCoeffs":  [ 0.978811, 3.71217, 0.000159566, 0.000281263, 0.638837, 1.36651, 3.99066, 1.93969],
     "marker_size": 0.03,
-    "output_width": 1280,
-    "output_height": 720,
-    "upper_left": [465, 29],
-    "upper_right": [1639, 306],
-    "lower_right": [1829, 937],
-    "lower_left": [281, 797],
-    "guide_displacement": [50, 0]
+    "output_width": 3840,
+    "output_height": 2160,
+    "lower_right": [55, 85],
+    "lower_left": [581, 84],
+    "upper_left": [573, 377],
+    "upper_right": [61, 378],
+    "guide_displacement": [250, 0]
 }

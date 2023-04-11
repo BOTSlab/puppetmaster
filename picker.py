@@ -3,7 +3,7 @@ import pprint
 #from skimage.draw.draw import disk, line, polygon
 
 # Parameters
-video_channel = 0
+video_channel = 4
 window_name = "Input"
 
 def mouse_callback(event, x, y, flags, param):
@@ -24,6 +24,11 @@ if __name__ == "__main__":
 
     while True:
         if cap is None: cap = cv2.VideoCapture(video_channel)
+        #width = 1280
+        #height = 720
+        #cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        #cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
         ret, image = cap.read()
         if not ret:
             print('Cannot read video.')
@@ -32,8 +37,8 @@ if __name__ == "__main__":
         for pt in clicked_points:
             cv2.circle(image, pt, 10, (255,0,255), thickness=5)
 
-        resize_divisor = 4
-        cv2.resizeWindow(window_name, image.shape[1]//resize_divisor, image.shape[0]//resize_divisor)
+        #resize_divisor = 1
+        #cv2.resizeWindow(window_name, image.shape[1]//resize_divisor, image.shape[0]//resize_divisor)
         cv2.imshow(window_name, image)
         c = cv2.waitKey(10)
 

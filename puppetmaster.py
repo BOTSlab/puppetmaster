@@ -8,7 +8,7 @@ import json
 import os
 import pprint
 import numpy as np
-from scipy.ndimage import gaussian_filter, rotate
+from scipy.ndimage import distance_transform_edt, gaussian_filter, rotate
 from skimage.draw.draw import disk, line, polygon
 from math import atan2, cos, pi, sin
 import matplotlib.pyplot as plt
@@ -16,8 +16,8 @@ from shapely.geometry.polygon import Polygon
 
 from controller_set import ControllerSet
 
-guide_thumbnail_size = 41
-#raw_window_name = "Raw Input"
+guide_thumbnail_size = 201
+raw_window_name = "Raw Input"
 input_window_name = "Input Image Side"
 output_window_name = "Output Image Side"
 
@@ -31,23 +31,28 @@ def create_thumbnail():
     size = guide_thumbnail_size
 
     assert size % 2 != 0, 'guide_thumbnail_size should be odd'
-    guide_thumbnail = np.zeros((size, size), np.uint8)
 
     # An arrow pointing to the right as a test for orientation
-    rr, cc = line(size//2, 0, size//2, size//2)
-    guide_thumbnail[rr, cc] = 255
-    poly = np.array(( (size//4, size//2),
-        (3*(size//4), size/2),
-        (size//2, size-1)
-    ))
-    rr, cc = polygon(poly[:, 0], poly[:, 1])
-    guide_thumbnail[rr, cc] = 255
-
-    #rr, cc = disk((size//2, size//2), 10)
+    #guide_thumbnail = np.zeros((size, size), np.uint8)
+    #rr, cc = line(size//2, 0, size//2, size//2)
+    #guide_thumbnail[rr, cc] = 255
+    #poly = np.array(( (size//4, size//2),
+    #    (3*(size//4), size/2),
+    #    (size//2, size-1)
+    #))
+    #rr, cc = polygon(poly[:, 0], poly[:, 1])
     #guide_thumbnail[rr, cc] = 255
 
-    #gaussian_filter(guide_thumbnail, output=guide_thumbnail, sigma=5)
+    #guide_thumbnail = np.zeros((size, size), np.uint8)
+    #rr, cc = disk((size//2, size//2), guide_thumbnail_size//3)
+    #guide_thumbnail[rr, cc] = 255
+    #gaussian_filter(guide_thumbnail, output=guide_thumbnail, sigma=10)
 
+    guide_thumbnail = np.ones((size, size), np.uint8)
+    guide_thumbnail[size//2, size//2] = 0
+    guide_thumbnail = distance_transform_edt(guide_thumbnail)
+    guide_thumbnail = size//2 - guide_thumbnail
+    guide_thumbnail[guide_thumbnail < 0] = 0
     max_value = np.amax(guide_thumbnail)
     guide_thumbnail = ((255 / max_value) * guide_thumbnail).astype(np.uint8)
     #print(guide_thumbnail)
@@ -225,11 +230,11 @@ if __name__ == "__main__":
         output_corners = [[0, 0], [output_width-1, 0], [output_width-1, output_height-1], [0, output_height-1]]
         homography, status = cv2.findHomography(np.array(screen_corners), np.array(output_corners))
 
-        #cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
-        #cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
-        cv2.namedWindow(output_window_name, cv2.WINDOW_NORMAL)
-        #cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
-        #cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
+        cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
+        cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
+        cv2.namedWindow(output_window_name, cv2.WINDOW_GUI_NORMAL)
+        cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
+        cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
         cv2.setWindowProperty(output_window_name, cv2.WND_PROP_TOPMOST, 1)
 
         output_image = None
@@ -285,11 +290,12 @@ if __name__ == "__main__":
             visualize_input_side(input_image, decoded_tags)
 
             resize_divisor = 1
-            #cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
-            #cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
-            cv2.resizeWindow(output_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
-            #cv2.imshow(raw_window_name, raw_image)
-            #cv2.imshow(input_window_name, input_image)
+            if resize_divisor > 1:
+                cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
+                cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
+                cv2.resizeWindow(output_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
+            cv2.imshow(raw_window_name, raw_image)
+            cv2.imshow(input_window_name, input_image)
             cv2.imshow(output_window_name, output_image)
             c = cv2.waitKey(10)
 
