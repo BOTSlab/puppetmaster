@@ -12,11 +12,10 @@ from scipy.ndimage import gaussian_filter, rotate
 from skimage.draw.draw import disk, line, polygon
 from math import atan2, cos, pi, sin
 import matplotlib.pyplot as plt
-from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 
 guide_thumbnail_size = 41
-raw_window_name = "Raw Input"
+#raw_window_name = "Raw Input"
 input_window_name = "Input Image Side"
 output_window_name = "Output Image Side"
 
@@ -118,10 +117,6 @@ def process_tag(tag):
     H_inv = np.linalg.inv(H)
     tag_centre = warpPerspectivePts(H_inv, [[127, 127]])[0]
 
-    # Discard tags outside the dilated polygon.
-    if not screen_corners_polygon_dilated.contains(Point(tag_centre)):
-        return
-
     tag_theta = get_tag_theta(tag, output_image)
 
     # Determine the centre position for the thumbnail to be pasted.
@@ -217,17 +212,16 @@ if __name__ == "__main__":
         cameraMatrix = np.float32(cameraMatrix).reshape(3,3)
         distCoeffs = np.float32(distCoeffs)
         screen_corners_polygon = Polygon(screen_corners)
-        screen_corners_polygon_dilated = screen_corners_polygon.buffer(100, single_sided=True)
 
         output_corners = [[0, 0], [output_width-1, 0], [output_width-1, output_height-1], [0, output_height-1]]
         homography, status = cv2.findHomography(np.array(screen_corners), np.array(output_corners))
 
-        cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
+        #cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
         cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
-        #cv2.namedWindow(output_window_name, cv2.WINDOW_NORMAL)
-        cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
+        cv2.namedWindow(output_window_name, cv2.WINDOW_NORMAL)
+        #cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
         cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
-        #cv2.setWindowProperty(output_window_name, cv2.WND_PROP_TOPMOST, 1)
+        cv2.setWindowProperty(output_window_name, cv2.WND_PROP_TOPMOST, 1)
 
         output_image = None
         cap = None 
@@ -273,16 +267,15 @@ if __name__ == "__main__":
 
             #c = stag_image_processor.visualize(is_pause= not is_video)
             draw_polygon(screen_corners_polygon, raw_image, (255, 255, 0))
-            draw_polygon(screen_corners_polygon_dilated, raw_image, (0, 255, 255))
             visualize_input_side(input_image, decoded_tags)
 
-            resize_divisor = 4
-            cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
+            resize_divisor = 1
+            #cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
             cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
-            #cv2.resizeWindow(input_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
-            cv2.imshow(raw_window_name, raw_image)
+            cv2.resizeWindow(output_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
+            #cv2.imshow(raw_window_name, raw_image)
             cv2.imshow(input_window_name, input_image)
-            #cv2.imshow(output_window_name, output_image)
+            cv2.imshow(output_window_name, output_image)
             c = cv2.waitKey(1)
 
             # press ESC or q to exit
