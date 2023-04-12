@@ -16,7 +16,8 @@ from shapely.geometry.polygon import Polygon
 
 from controller_set import ControllerSet
 
-guide_thumbnail_size = 201
+guide_thumbnail_method = "disk"
+guide_thumbnail_size = 101
 raw_window_name = "Raw Input"
 input_window_name = "Input Image Side"
 output_window_name = "Output Image Side"
@@ -26,35 +27,45 @@ distCoeffs = None
 input_image = None
 screen_corners = []
 controller_set = ControllerSet()
+green_or_blue = None
 
 def create_thumbnail():
     size = guide_thumbnail_size
 
     assert size % 2 != 0, 'guide_thumbnail_size should be odd'
 
+    if guide_thumbnail_method == "arrow":
     # An arrow pointing to the right as a test for orientation
-    #guide_thumbnail = np.zeros((size, size), np.uint8)
-    #rr, cc = line(size//2, 0, size//2, size//2)
-    #guide_thumbnail[rr, cc] = 255
-    #poly = np.array(( (size//4, size//2),
-    #    (3*(size//4), size/2),
-    #    (size//2, size-1)
-    #))
-    #rr, cc = polygon(poly[:, 0], poly[:, 1])
-    #guide_thumbnail[rr, cc] = 255
+        guide_thumbnail = np.zeros((size, size), np.uint8)
+        rr, cc = line(size//2, 0, size//2, size//2)
+        guide_thumbnail[rr, cc] = 255
+        poly = np.array(( (size//4, size//2),
+            (3*(size//4), size/2),
+            (size//2, size-1)
+        ))
+        rr, cc = polygon(poly[:, 0], poly[:, 1])
+        guide_thumbnail[rr, cc] = 255
 
-    #guide_thumbnail = np.zeros((size, size), np.uint8)
-    #rr, cc = disk((size//2, size//2), guide_thumbnail_size//3)
-    #guide_thumbnail[rr, cc] = 255
-    #gaussian_filter(guide_thumbnail, output=guide_thumbnail, sigma=10)
+    elif guide_thumbnail_method == "gaussian_disk":
+        guide_thumbnail = np.zeros((size, size), np.uint8)
+        rr, cc = disk((size//2, size//2), guide_thumbnail_size//3)
+        guide_thumbnail[rr, cc] = 255
+        gaussian_filter(guide_thumbnail, output=guide_thumbnail, sigma=10)
 
-    guide_thumbnail = np.ones((size, size), np.uint8)
-    guide_thumbnail[size//2, size//2] = 0
-    guide_thumbnail = distance_transform_edt(guide_thumbnail)
-    guide_thumbnail = size//2 - guide_thumbnail
-    guide_thumbnail[guide_thumbnail < 0] = 0
-    max_value = np.amax(guide_thumbnail)
-    guide_thumbnail = ((255 / max_value) * guide_thumbnail).astype(np.uint8)
+    elif guide_thumbnail_method == "distance":
+        guide_thumbnail = np.ones((size, size), np.uint8)
+        guide_thumbnail[size//2, size//2] = 0
+        guide_thumbnail = distance_transform_edt(guide_thumbnail)
+        guide_thumbnail = size//2 - guide_thumbnail
+        guide_thumbnail[guide_thumbnail < 0] = 0
+        max_value = np.amax(guide_thumbnail)
+        guide_thumbnail = ((255 / max_value) * guide_thumbnail).astype(np.uint8)
+
+    elif guide_thumbnail_method == "disk":
+        guide_thumbnail = np.zeros((size, size), np.uint8)
+        rr, cc = disk((size//2, size//2), size//2)
+        guide_thumbnail[rr, cc] = 255
+
     #print(guide_thumbnail)
     #plt.imshow(guide_thumbnail)
     #plt.show()
@@ -116,9 +127,8 @@ def get_tag_theta(tag, img):
     # To get the orientation of the tag, we use the positions of the tag's centre and the tag's x-axis vector.  
     x = x_vector_imgpts[0][0][0] - origin_imgpts[0][0][0]
     y = x_vector_imgpts[0][0][1] - origin_imgpts[0][0][1]
-    #img = cv2.line(img, tuple(origin_imgpts[0].ravel().astype(np.int16).tolist()), \
-    #              tuple(x_vector_imgpts[0].ravel().astype(np.int16).tolist()), (255, 255, 255), 5)
-    return atan2(y, x)
+
+    return atan2(y, x) + pi/2
 
 def process_tag(tag, movement):
     forward_movement, angular_movement = movement
@@ -230,11 +240,11 @@ if __name__ == "__main__":
         output_corners = [[0, 0], [output_width-1, 0], [output_width-1, output_height-1], [0, output_height-1]]
         homography, status = cv2.findHomography(np.array(screen_corners), np.array(output_corners))
 
-        cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
-        cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
+        #cv2.namedWindow(raw_window_name, cv2.WINDOW_NORMAL)
+        #cv2.namedWindow(input_window_name, cv2.WINDOW_NORMAL)
         cv2.namedWindow(output_window_name, cv2.WINDOW_GUI_NORMAL)
-        cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
-        cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
+        #cv2.setWindowProperty(raw_window_name, cv2.WND_PROP_TOPMOST, 1)
+        #cv2.setWindowProperty(input_window_name, cv2.WND_PROP_TOPMOST, 1)
         cv2.setWindowProperty(output_window_name, cv2.WND_PROP_TOPMOST, 1)
 
         output_image = None
@@ -264,8 +274,8 @@ if __name__ == "__main__":
             if output_image is None:
                 output_image = np.zeros((output_height, output_width), np.uint8)
             else:
-                # output_image.fill(0)
-                output_image = input_image[:,:,0] // 10
+                output_image.fill(0)
+                # output_image = input_image[:,:,0] // 10
 
             # detect markers, print timing, visualize poses
             decoded_tags = stag_image_processor.process(input_image, detect_scale=None)
@@ -283,7 +293,11 @@ if __name__ == "__main__":
                     # as determined by controller_set.
                     continue
 
-                process_tag(tag, movement_dict[tag['tag_id']])
+                movement = movement_dict[tag['tag_id']]
+                if abs(movement[0]) > 0 or abs(movement[1]) > 0:
+                    # If the movement is non-zero, place a thumbnail on the screen.
+                    # to guide the robot.
+                    process_tag(tag, movement)
 
             #c = stag_image_processor.visualize(is_pause= not is_video)
             draw_polygon(screen_corners_polygon, raw_image, (255, 255, 0))
@@ -291,12 +305,18 @@ if __name__ == "__main__":
 
             resize_divisor = 1
             if resize_divisor > 1:
-                cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
-                cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
+                #cv2.resizeWindow(raw_window_name, raw_image.shape[1]//resize_divisor, raw_image.shape[0]//resize_divisor)
+                #cv2.resizeWindow(input_window_name, input_image.shape[1]//resize_divisor, input_image.shape[0]//resize_divisor)
                 cv2.resizeWindow(output_window_name, output_image.shape[1]//resize_divisor, output_image.shape[0]//resize_divisor)
-            cv2.imshow(raw_window_name, raw_image)
-            cv2.imshow(input_window_name, input_image)
-            cv2.imshow(output_window_name, output_image)
+            #cv2.imshow(raw_window_name, raw_image)
+            #cv2.imshow(input_window_name, input_image)
+
+            if green_or_blue is None:
+                green_or_blue = np.zeros((output_height, output_width), np.uint8)
+            rgb = cv2.merge([green_or_blue, green_or_blue, output_image])
+
+            cv2.imshow(output_window_name, rgb)
+            #cv2.imshow(output_window_name, output_image)
             c = cv2.waitKey(10)
 
             # press ESC or q to exit
